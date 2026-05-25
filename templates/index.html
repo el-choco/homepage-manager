@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Homepage Config Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <style>
+        body { background-color: #121212; }
+        .nav-tabs .nav-link { color: #aaa; }
+        .nav-tabs .nav-link.active { background-color: #1e1e1e; border-color: #333 #333 #1e1e1e; color: #fff; font-weight: bold; }
+        .category-card { background-color: #1e1e1e; border: 1px solid #333; margin-bottom: 2rem; border-radius: 10px; }
+        .category-header { background-color: #252525; border-bottom: 1px solid #333; padding: 15px 20px; border-radius: 10px 10px 0 0; display: flex; justify-content: space-between; align-items: center;}
+        .service-item { background-color: #2a2a2a; border: 1px solid #444; border-radius: 8px; padding: 15px; height: 100%; transition: transform 0.2s;}
+        .service-item:hover { transform: translateY(-3px); border-color: #666;}
+        .yaml-editor { font-family: 'Courier New', Courier, monospace; background-color: #151515; color: #0dcaf0; border: 1px solid #444; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark bg-dark border-bottom border-secondary mb-4">
+    <div class="container-fluid">
+        <span class="navbar-brand mb-0 h1"><i class="fas fa-cogs text-primary me-2"></i> Homepage Manager</span>
+        <a href="/logout" class="btn btn-outline-danger btn-sm"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+</nav>
+
+<div class="container pb-5">
+    
+    <ul class="nav nav-tabs mb-4" id="configTabs" role="tablist">
+        {% for filename, data in configs.items() %}
+        {% set is_active = (active_tab == filename) or (not active_tab and loop.first) %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if is_active %}active{% endif %}" id="tab-btn-{{ loop.index }}" data-bs-toggle="tab" data-bs-target="#tab-pane-{{ loop.index }}" type="button" role="tab">
+                <i class="fas {% if data is none %}fa-exclamation-circle text-danger{% elif data.type == 'text' %}fa-file-alt text-info{% else %}fa-file-code text-success{% endif %} me-1"></i> {{ filename }}
+            </button>
+        </li>
+        {% endfor %}
+    </ul>
+
+    <div class="tab-content" id="configTabsContent">
+        {% for filename, data in configs.items() %}
+        {% set is_active = (active_tab == filename) or (not active_tab and loop.first) %}
+        <div class="tab-pane fade {% if is_active %}show active{% endif %}" id="tab-pane-{{ loop.index }}" role="tabpanel">
+            
+            {% if data is none %}
+                <div class="alert alert-warning border-warning text-warning bg-dark">
+                    <i class="fas fa-exclamation-triangle fa-2x float-start me-3"></i>
+                    <h4>File Not Found</h4>
+                    <p class="mb-0">The file <strong>{{ filename }}</strong> does not exist.</p>
+                </div>
+            {% else %}
+                
+                {% if data.type == 'text' %}
+                    <div class="category-card shadow-sm">
+                        <div class="category-header">
+                            <h4 class="mb-0 text-light"><i class="fas fa-edit text-info me-2"></i> Editor for {{ filename }}</h4>
+                        </div>
+                        <div class="card-body">
+                            <form action="/save_text/{{ filename }}" method="POST">
+                                <textarea name="content" class="form-control yaml-editor mb-3" rows="20">{{ data.raw }}</textarea>
+                                <button type="submit" class="btn btn-success"><i class="fas fa-save"></i> Save {{ filename }}</button>
+                            </form>
+                        </div>
+                    </div>
+                
+                {% else %}
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h3 class="text-light mb-0">{{ filename }} Configuration</h3>
+                        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#actionModal" data-file="{{ filename }}" data-action="add_category">
+                            <i class="fas fa-folder-plus"></i> Add Category
+                        </button>
+                    </div>
+
+                    {% if 'services' in filename %}
+                        {% for category_dict in data.parsed %}
+                            {% for cat_name, services in category_dict.items() %}
+                            <div class="category-card shadow-sm">
+                                <div class="category-header">
+                                    <h4 class="mb-0 text-light"><i class="fas fa-folder-open text-warning me-2"></i> {{ cat_name }}</h4>
+                                    <div class="btn-group">
+                                        <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#actionModal" data-file="{{ filename }}" data-action="add_item" data-path="{{ cat_name }}">
+                                            <i class="fas fa-plus"></i> Add Service
+                                        </button>
+                                        <form action="/action/{{ filename }}" method="POST" class="d-inline">
+                                            <input type="hidden" name="action_type" value="delete_item">
+                                            <input type="hidden" name="item_path" value="{{ cat_name }}">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm ms-1"><i class="fas fa-trash"></i></button>
+                                        </form>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row g-3">
+                                        {% for service_dict in services %}
+                                            {% for srv_name, details in service_dict.items() %}
+                                            <div class="col-md-6 col-lg-4">
+                                                <div class="service-item d-flex flex-column">
+                                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                                        <h5 class="text-info mb-0 text-truncate">{{ srv_name }}</h5>
+                                                        <div class="btn-group">
+                                                            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#actionModal" data-file="{{ filename }}" data-action="edit_item" data-path="{{ srv_name }}" data-content="{{ details | tojson | forceescape }}">
+                                                                <i class="fas fa-pen"></i>
+                                                            </button>
+                                                            <form action="/action/{{ filename }}" method="POST" class="d-inline">
+                                                                <input type="hidden" name="action_type" value="delete_item">
+                                                                <input type="hidden" name="item_path" value="{{ srv_name }}">
+                                                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
+                                                            </form>
+                                                        </div>
+                                                    </div>
+                                                    <p class="text-muted small mb-3 flex-grow-1">{{ details.get('description', '') }}</p>
+                                                    <div class="d-flex align-items-center mt-auto border-top border-secondary pt-2">
+                                                        <span class="badge bg-secondary me-2"><i class="fas fa-image"></i> {{ details.get('icon', '') }}</span>
+                                                        <span class="text-truncate text-muted small"><i class="fas fa-link me-1"></i>{{ details.get('href', '') }}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {% endfor %}
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% endfor %}
+
+                    {% elif 'settings' in filename %}
+                        <div class="category-card shadow-sm">
+                            <div class="category-header">
+                                <h4 class="mb-0 text-light"><i class="fas fa-sliders-h text-primary me-2"></i> Global Settings</h4>
+                                <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#actionModal" data-file="{{ filename }}" data-action="add_item" data-path="global">
+                                    <i class="fas fa-plus"></i> Add Setting
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-3">
+                                    {% for key, value in data.parsed.items() %}
+                                        {% if key != 'layout' %}
+                                        <div class="col-md-6 col-lg-4">
+                                            <div class="p-3 bg-dark border border-secondary rounded">
+                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                    <label class="form-label text-info fw-bold mb-0">{{ key }}</label>
+                                                    <div class="btn-group">
+                                                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#actionModal" data-file="{{ filename }}" data-action="edit_item" data-path="{{ key }}" data-content="{{ value | forceescape }}">
+                                                            <i class="fas fa-pen"></i>
+                                                        </button>
+                                                        <form action="/action/{{ filename }}" method="POST" class="d-inline">
+                                                            <input type="hidden" name="action_type" value="delete_item">
+                                                            <input type="hidden" name="item_path" value="{{ key }}">
+                                                            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                                <input type="text" class="form-control" value="{{ value }}" readonly>
+                                            </div>
+                                        </div>
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+
+                        {% if data.parsed.get('layout') %}
+                        <div class="category-card shadow-sm">
+                            <div class="category-header">
+                                <h4 class="mb-0 text-light"><i class="fas fa-th-large text-success me-2"></i> Layout Configuration</h4>
+                                <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#actionModal" data-file="{{ filename }}" data-action="add_item" data-path="layout">
+                                    <i class="fas fa-plus"></i> Add Layout
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-3">
+                                    {% for layout_name, layout_details in data.parsed.get('layout').items() %}
+                                    <div class="col-md-6 col-lg-4">
+                                        <div class="p-3 bg-dark border border-secondary rounded">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <h5 class="text-info mb-0">{{ layout_name }}</h5>
+                                                <div class="btn-group">
+                                                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#actionModal" data-file="{{ filename }}" data-action="edit_item" data-path="{{ layout_name }}" data-content="{{ layout_details | tojson | forceescape }}">
+                                                        <i class="fas fa-pen"></i>
+                                                    </button>
+                                                    <form action="/action/{{ filename }}" method="POST" class="d-inline">
+                                                        <input type="hidden" name="action_type" value="delete_item">
+                                                        <input type="hidden" name="item_path" value="{{ layout_name }}">
+                                                        <button type="submit" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                            <div class="mb-2">
+                                                <label class="small text-muted">Style</label>
+                                                <input type="text" class="form-control form-control-sm" value="{{ layout_details.get('style', '') }}" readonly>
+                                            </div>
+                                            <div>
+                                                <label class="small text-muted">Columns</label>
+                                                <input type="number" class="form-control form-control-sm" value="{{ layout_details.get('columns', '') }}" readonly>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                    {% elif 'bookmarks' in filename %}
+                        {% for bookmark_dict in data.parsed %}
+                            {% for group_name, links in bookmark_dict.items() %}
+                            <div class="category-card shadow-sm">
+                                <div class="category-header">
+                                    <h4 class="mb-0 text-light"><i class="fas fa-bookmark text-danger me-2"></i> {{ group_name }}</h4>
+                                    <div class="btn-group">
+                                        <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#actionModal" data-file="{{ filename }}" data-action="add_item" data-path="{{ group_name }}">
+                                            <i class="fas fa-plus"></i> Add Bookmark
+                                        </button>
+                                        <form action="/action/{{ filename }}" method="POST" class="d-inline ms-1">
+                                            <input type="hidden" name="action_type" value="delete_item">
+                                            <input type="hidden" name="item_path" value="{{ group_name }}">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm"><i class="fas fa-trash"></i></button>
+                                        </form>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row g-3">
+                                        {% if links is iterable and links is not string %}
+                                            {% for link in links %}
+                                                {% if link is mapping %}
+                                                    {% for name, details in link.items() %}
+                                                    
+                                                    {% set ns = namespace(href='') %}
+                                                    {% if details is mapping %}
+                                                        {% set ns.href = details.get('href', '') %}
+                                                    {% elif details is iterable and details is not string %}
+                                                        {% for prop in details %}
+                                                            {% if prop is mapping and 'href' in prop %}
+                                                                {% set ns.href = prop.get('href', '') %}
+                                                            {% endif %}
+                                                        {% endfor %}
+                                                    {% endif %}
+
+                                                    <div class="col-md-6 col-lg-4">
+                                                        <div class="p-3 bg-dark border border-secondary rounded d-flex justify-content-between align-items-center">
+                                                            <div>
+                                                                <h6 class="text-info mb-0">{{ name }}</h6>
+                                                                <span class="text-muted small text-truncate d-block" style="max-width: 200px;">{{ ns.href }}</span>
+                                                            </div>
+                                                            <div class="btn-group">
+                                                                <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#actionModal" data-file="{{ filename }}" data-action="edit_item" data-path="{{ name }}" data-content="{{ details | tojson | forceescape }}">
+                                                                    <i class="fas fa-pen"></i>
+                                                                </button>
+                                                                <form action="/action/{{ filename }}" method="POST" class="d-inline">
+                                                                    <input type="hidden" name="action_type" value="delete_item">
+                                                                    <input type="hidden" name="item_path" value="{{ name }}">
+                                                                    <button type="submit" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
+                                                                </form>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    {% endfor %}
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% endfor %}
+
+                    {% elif 'widgets' in filename %}
+                        <div class="category-card shadow-sm">
+                            <div class="category-header">
+                                <h4 class="mb-0 text-light"><i class="fas fa-chart-pie text-info me-2"></i> Active Widgets</h4>
+                                <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#actionModal" data-file="{{ filename }}" data-action="add_category">
+                                    <i class="fas fa-plus"></i> Add Widget
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-3">
+                                    {% if data.parsed is iterable and data.parsed is not string %}
+                                        {% for widget_item in data.parsed %}
+                                            {% if widget_item is mapping %}
+                                                {% for widget_type, widget_details in widget_item.items() %}
+                                                <div class="col-md-6 col-lg-4">
+                                                    <div class="p-3 bg-dark border border-secondary rounded">
+                                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                                            <h5 class="text-warning mb-0">{{ widget_type }}</h5>
+                                                            <div class="btn-group">
+                                                                <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#actionModal" data-file="{{ filename }}" data-action="edit_item" data-path="{{ widget_type }}" data-content="{{ widget_details | tojson | forceescape }}">
+                                                                    <i class="fas fa-pen"></i>
+                                                                </button>
+                                                                <form action="/action/{{ filename }}" method="POST" class="d-inline">
+                                                                    <input type="hidden" name="action_type" value="delete_item">
+                                                                    <input type="hidden" name="item_path" value="{{ widget_type }}">
+                                                                    <button type="submit" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
+                                                                </form>
+                                                            </div>
+                                                        </div>
+                                                        <div class="small text-muted">
+                                                            {% if widget_details is mapping %}
+                                                                {% for w_key, w_val in widget_details.items() %}
+                                                                    <div><strong>{{ w_key }}:</strong> {{ w_val }}</div>
+                                                                {% endfor %}
+                                                            {% endif %}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                {% endfor %}
+                                            {% endif %}
+                                        {% endfor %}
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                    {% else %}
+                        <div class="category-card shadow-sm">
+                            <div class="category-header">
+                                <h4 class="mb-0 text-light"><i class="fas fa-server text-muted me-2"></i> Infrastructure</h4>
+                                <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#actionModal" data-file="{{ filename }}" data-action="add_item" data-path="root">
+                                    <i class="fas fa-plus"></i> Add Entry
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-3">
+                                    {% for key, value in data.parsed.items() %}
+                                    <div class="col-md-6 col-lg-4">
+                                        <div class="p-3 bg-dark border border-secondary rounded">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <h5 class="text-info mb-0">{{ key }}</h5>
+                                                <div class="btn-group">
+                                                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#actionModal" data-file="{{ filename }}" data-action="edit_item" data-path="{{ key }}" data-content="{{ value | forceescape }}">
+                                                        <i class="fas fa-pen"></i>
+                                                    </button>
+                                                    <form action="/action/{{ filename }}" method="POST" class="d-inline">
+                                                        <input type="hidden" name="action_type" value="delete_item">
+                                                        <input type="hidden" name="item_path" value="{{ key }}">
+                                                        <button type="submit" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                            <div class="small text-muted text-truncate">{{ value }}</div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+                {% endif %}
+
+            {% endif %}
+
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+
+<div class="modal fade" id="actionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg bg-dark text-light">
+        <div class="modal-content bg-dark border-secondary">
+            <form id="actionForm" method="POST" action="">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title" id="actionModalLabel">Configuration Editor</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="action_type" id="modalActionType">
+                    <input type="hidden" name="item_path" id="modalItemPath">
+                    
+                    <div class="mb-3 d-none" id="templateSelectorContainer">
+                        <label class="form-label text-warning"><i class="fas fa-magic me-1"></i> Pre-configured Templates</label>
+                        <select class="form-select bg-dark text-light border-secondary" id="templateSelector">
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label text-info">Data (YAML format)</label>
+                        <textarea class="form-control yaml-editor" name="item_data" id="modalItemData" rows="10"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success"><i class="fas fa-save"></i> Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    const TEMPLATES = {
+        'services.yaml': {
+            'Standard Service': "NewService:\n  icon: application.png\n  href: https://example.com\n  description: Basic service description",
+            'Service with Ping Monitor': "PingService:\n  icon: application.png\n  href: https://example.com\n  ping: example.com",
+            'Service with Docker Stats': "DockerService:\n  icon: docker.png\n  href: https://example.com\n  server: my-docker\n  container: container-name",
+            'Service with API Widget': "WidgetService:\n  icon: application.png\n  href: https://example.com\n  widget:\n    type: customapi\n    url: https://api.example.com"
+        },
+        'widgets.yaml': {
+            'Search (Google/DDG)': "search:\n  provider: google\n  target: _blank",
+            'System Resources': "resources:\n  cpu: true\n  memory: true\n  disk: /",
+            'Date & Time': "datetime:\n  text_size: xl\n  format:\n    timeStyle: short",
+            'Weather (OpenMeteo)': "openmeteo:\n  label: Local Weather\n  latitude: 52.52\n  longitude: 13.41\n  timezone: Europe/Berlin"
+        },
+        'docker.yaml': {
+            'IP / Port (HTTP API)': "my-remote-docker:\n  host: 192.168.0.101\n  port: 2375",
+            'Docker Socket Proxy': "my-docker:\n  host: dockerproxy\n  port: 2375",
+            'Direct Socket (Local)': "my-local-docker:\n  socket: /var/run/docker.sock",
+            'Docker Swarm': "my-swarm:\n  socket: /var/run/docker.sock\n  swarm: true"
+        },
+        'kubernetes.yaml': {
+            'Standard Cluster': "my-cluster:\n  cluster:\n    certificate-authority-data: BASE64_CERT\n    server: https://192.168.0.100:6443\n  user:\n    token: YOUR_TOKEN",
+        },
+        'proxmox.yaml': {
+            'Proxmox API Token': "my-proxmox:\n  url: https://192.168.0.100:8006\n  username: root@pam\n  password: YOUR_PASSWORD"
+        },
+        'bookmarks.yaml': {
+            'Standard Bookmark': "NewBookmark:\n  - href: https://example.com\n  - description: My helpful link",
+            'Bookmark with Icon': "NewBookmark:\n  - href: https://example.com\n  - icon: mdi-bookmark\n  - description: My helpful link"
+        }
+    };
+
+    var actionModal = document.getElementById('actionModal')
+    var templateSelectorContainer = document.getElementById('templateSelectorContainer');
+    var templateSelector = document.getElementById('templateSelector');
+    var contentArea = document.getElementById('modalItemData');
+
+    actionModal.addEventListener('show.bs.modal', function (event) {
+        var button = event.relatedTarget
+        var file = button.getAttribute('data-file') || '';
+        var action = button.getAttribute('data-action')
+        var path = button.getAttribute('data-path') || ''
+        var content = button.getAttribute('data-content') || ''
+        
+        var form = document.getElementById('actionForm')
+        form.action = '/action/' + file
+        
+        document.getElementById('modalActionType').value = action
+        document.getElementById('modalItemPath').value = path
+        
+        templateSelector.innerHTML = '';
+        
+        if (action === 'add_item' || action === 'add_category') {
+            var fileKey = Object.keys(TEMPLATES).find(k => file.includes(k.split('.')[0]));
+            if (fileKey && TEMPLATES[fileKey]) {
+                templateSelectorContainer.classList.remove('d-none');
+                var templatesObj = TEMPLATES[fileKey];
+                
+                var defaultOpt = document.createElement('option');
+                defaultOpt.text = '-- Select a Template --';
+                defaultOpt.value = '';
+                templateSelector.add(defaultOpt);
+
+                for (var tName in templatesObj) {
+                    var opt = document.createElement('option');
+                    opt.value = templatesObj[tName];
+                    opt.text = tName;
+                    templateSelector.add(opt);
+                }
+
+                if (action === 'add_category' && (file.includes('services') || file.includes('bookmarks'))) {
+                    contentArea.value = "NewCategory:\n  - " + templatesObj[Object.keys(templatesObj)[0]].replace(/\n/g, '\n    ');
+                } else {
+                    contentArea.value = templatesObj[Object.keys(templatesObj)[0]];
+                    templateSelector.selectedIndex = 1;
+                }
+            } else {
+                templateSelectorContainer.classList.add('d-none');
+                contentArea.value = "NewItem:\n  key: value";
+            }
+        } else if (action === 'edit_item') {
+            templateSelectorContainer.classList.add('d-none');
+            try {
+                var parsed = JSON.parse(content);
+                var formatted = "";
+                if (Array.isArray(parsed)) {
+                    parsed.forEach(function(item) {
+                        for (var key in item) {
+                            formatted += "- " + key + ": " + item[key] + "\n";
+                        }
+                    });
+                } else if (typeof parsed === 'object' && parsed !== null) {
+                    for (var key in parsed) {
+                        formatted += key + ": " + parsed[key] + "\n";
+                    }
+                } else {
+                    formatted = content;
+                }
+                contentArea.value = formatted;
+            } catch(e) {
+                contentArea.value = content;
+            }
+        }
+    });
+
+    templateSelector.addEventListener('change', function() {
+        if (this.value) {
+            var action = document.getElementById('modalActionType').value;
+            var file = document.getElementById('actionForm').action;
+            if (action === 'add_category' && (file.includes('services') || file.includes('bookmarks'))) {
+                contentArea.value = "NewCategory:\n  - " + this.value.replace(/\n/g, '\n    ');
+            } else {
+                contentArea.value = this.value;
+            }
+        }
+    });
+</script>
+</body>
+</html>

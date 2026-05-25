@@ -1,0 +1,15 @@
+services:
+  homepage-manager:
+    build: .
+    image: paquele/homepage-manager:latest
+    container_name: homepage-manager
+    ports:
+      - "3335:3335"
+    volumes:
+      - path/to/homepage/config:/app
+    working_dir: /app
+    environment:
+      - APP_USER=admin
+      - APP_PASS=admin
+      - SECRET_KEY=supersecret
+    restart: unless-stopped
